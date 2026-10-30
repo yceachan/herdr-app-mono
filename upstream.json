@@ -1,0 +1,16 @@
+{
+  "herdr-app": {
+    "version": "0.1.9",
+    "source": "https://github.com/herdrdev/herdr-app",
+    "files": [
+      "defaults/layouts/main.json",
+      "defaults/mods/tabs/main.js",
+      "defaults/mods/tabs/mod.json"
+    ],
+    "acquired_from": "Installed application defaults"
+  },
+  "git-graph": {
+    "source": "https://github.com/rabeeh-ta/herdr-git-graph",
+    "commit": "24a0afb9743ab3e3640c049b5e6b03d597d1a045"
+  }
+}
