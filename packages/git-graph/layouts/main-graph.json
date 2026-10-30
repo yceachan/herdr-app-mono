@@ -165,7 +165,8 @@
                       "id": "graph",
                       "type": "block",
                       "content": {
-                        "mod": "git-graph"
+                        "mod": "git-graph",
+                        "props": { "role": "panel" }
                       }
                     }
                   ]

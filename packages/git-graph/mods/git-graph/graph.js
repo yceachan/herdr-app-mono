@@ -1,13 +1,13 @@
 // The graph itself: Git Graph's table (graph, description, date, author,
 // commit) for the focused pane's repository, or `props.folder` when opened as
-// a pane. Labels take double-clicks (checkout) and right-clicks (menus).
+// a pane. Left clicks only inspect commits; Git actions live in right-click menus.
 import { div, svg, PathBuilder } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, v_virtual_list } from "gpui-base";
-import { spaces, panes, focused, exec, watchFolder, readTextFile, theme, settings, props, shared, openOverlay, home } from "herdr";
+import { spaces, panes, focused, exec, watchFolder, readTextFile, theme, settings, props, shared, openOverlay, home, layout } from "herdr";
 import { layoutLanes } from "./lanes.js";
 import { READ, STATUS, UNCOMMITTED, LABEL, logArgs, parseLog, parseStatus, withUncommitted, labelsOf, hitLabel,
   menuFor, menuHeight, fileArgs, joinFiles, diffArgs, diffRows } from "./git.js";
-import { perform, openDialog, showChanges } from "./act.js";
+import { perform, showChanges } from "./act.js";
 import { icon } from "./menu.js";
 
 function location(folder) {
@@ -16,6 +16,14 @@ function location(folder) {
   const pane = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
   return { cwd: pane?.cwd || f?.cwd || space?.folder, on };
+}
+
+// A hidden panel stays mounted in Herdr, so its timers and watchers need an explicit visibility gate.
+function shown(node, id) {
+  if (!node || node.hidden) return false;
+  if (node.id === id) return true;
+  return (node.children ?? []).some((child) =>
+    (node.type !== "stack" || child.id === node.active) && shown(child, id));
 }
 
 const PAGE = 300, ROW = 24, LANE = 12, PAD = 6, DATE = 62, AUTHOR = 120, HASH = 66, DIFF_ROW = 20;
@@ -97,6 +105,8 @@ export class Graph {
     cx.timer.every(15000, (cx) => { if (!this.watching) this.refresh(cx); this.warm(cx); });
   }
 
+  visible() { return props()?.role !== "panel" || shown(layout(), "graph"); }
+
   key() { return JSON.stringify(location(this.folder)); }
 
   reset() {
@@ -120,7 +130,7 @@ export class Graph {
 
   // Like manygit: read the folders open in other spaces ahead, one at a time, so switching to one shows it at once.
   warm(cx) {
-    if (this.folder || this.warming) return;
+    if (!this.visible() || this.folder || this.warming) return;
     const machineOf = new Map(spaces().flatMap((s) => s.tabs.map((tab) => [tab.id, s.machine ?? null])));
     const todo = new Map();
     for (const p of panes()) {
@@ -135,6 +145,7 @@ export class Graph {
     cx.spawn(async () => {
       try {
         for (const [key, { cwd, on }] of order) {
+          if (!this.visible()) break;
           const scope = scopeOf(this);
           const read = await readFolder(cwd, on, { all: this.all, remotes: this.remotes, limit: PAGE }).catch(() => null);
           if (read && key !== this.context && !this.seen.has(key) && scope === scopeOf(this)) {
@@ -148,12 +159,17 @@ export class Graph {
   // A load belongs to its folder: a new folder starts at once, and a slower
   // load for the old one finds itself stale and drops its result.
   refresh(cx, full = true) {
+    if (!this.visible()) { this.needsRefresh = true; return; }
+    this.needsRefresh = false;
     const { cwd, on } = location(this.folder), context = this.key();
     if (context !== this.context) { this.enter(context); full = true; }
     if (!cwd) { this.state = "nofolder"; return; }
     if (this.loading === context) { this.again = this.again === "full" || full ? "full" : "status"; return; }
     this.loading = context; this.again = null;
-    const { all, remotes, limit } = this, stale = () => this.key() !== context;
+    const { all, remotes, limit } = this, stale = () => {
+      if (!this.visible()) { this.needsRefresh = true; return true; }
+      return this.key() !== context;
+    };
     cx.spawn(async (cx) => {
       try {
         if (full || !this.root) {
@@ -253,28 +269,14 @@ export class Graph {
   // Pointer positions come in window units; layout sizes are these units times the zoom.
   unit() { return this.scale ?? settings().zoom ?? 1; }
 
-  // A left press, then on release the list names the row: together, a click on a label.
+  // Repeated left clicks never run Git actions or toggle the first click's details.
   clicked(key, cx) {
     const press = this.press; this.press = null;
     if (key === "more") return this.loadMore(cx);
     const commit = this.commits[this.index.get(key)];
     if (!commit) return;
-    if (press?.count >= 2) {
-      const hit = hitLabel(this.labels.get(key), press.x, this.graphWidth(), this.labelLimit());
-      if (hit) this.checkout(hit.part, cx);
-      return;
-    }
+    if (press?.count >= 2) return;
     this.pick(commit, cx);
-  }
-
-  checkout(part, cx) {
-    const ctx = this.ctx;
-    if (part.kind === "branch" && part.name !== ctx.current) cx.spawn(async () => { await perform({ type: "checkout", name: part.name }, {}, ctx); });
-    else if (part.kind === "remote") {
-      const branch = part.name.slice(part.name.indexOf("/") + 1);
-      if (ctx.branches.includes(branch)) { if (branch !== ctx.current) cx.spawn(async () => { await perform({ type: "checkout", name: branch }, {}, ctx); }); }
-      else openDialog({ type: "checkoutRemote", name: part.name, remote: part.name.slice(0, part.name.indexOf("/")), branch }, ctx);
-    }
   }
 
   contextMenu(key, e, cx) {
@@ -447,7 +449,7 @@ export class Graph {
   list(t, mono) {
     const colors = laneColors(t), width = this.graphWidth(), count = this.commits.length + (this.hasMore ? 1 : 0);
     return div().flex_1().min_h(0).relative()
-      .on_mouse_down("left", (e) => { this.press = { x: (e.local_position?.x ?? 0) / this.unit(), count: e.click_count }; })
+      .on_mouse_down("left", (e) => { this.press = { count: e.click_count }; })
       .child(v_virtual_list(this.listId, count, ROW, (i) => this.commits[i]?.hash ?? "more",
         (range, cx) => {
           // Scrolling to the end loads the next page, as Git Graph does; the row also takes a click.
@@ -547,7 +549,8 @@ export class Graph {
   }
 
   render(cx) {
-    if (this.key() !== this.context) this.refresh(cx);
+    if (!this.visible()) { this.needsRefresh = true; return div(); }
+    if (this.needsRefresh || this.key() !== this.context) this.refresh(cx);
     const changed = shared("git-graph.changed");
     if (changed !== this.seenChange) { this.seenChange = changed; if (this.root) this.refresh(cx); }
     const t = theme(), mono = settings().font_family ?? "JetBrains Mono", ready = this.state === "ready";

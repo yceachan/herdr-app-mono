@@ -1,44 +1,41 @@
-# Herdr Git Graph
+# Herdr App 配置集合
 
-在官方默认布局旁新增 `main-graph`：保留 Spaces / Agents / Shell 和官方交互，仅在 Files / Changes 旁增加 Graph。
+个人 Herdr App layouts、mods 与配套配置的源码仓库。每套可独立安装的配置放在 `packages/` 中，保留自身的安装入口、测试、说明和上游来源。
 
-## 使用
+## Packages
 
-- 点击 **Graph** 展示当前焦点终端所在仓库的分支与提交历史；再次点击收起。面板选择按 space 记忆。
-- 点击提交查看详情，再点击文件查看 diff。侧栏可拖宽，Graph 支持作为独立 pane 使用。
-- 双击分支标签会 checkout；右键菜单提供 merge、rebase、reset、push 等上游操作。复杂或破坏性操作有确认对话框；切换 Agent 正在使用的工作树前先协调它的工作。
+| Package | 用途 | 使用说明 |
+| --- | --- | --- |
+| [git-graph](packages/git-graph/) | 在默认主布局的 Files / Changes 旁加入 Git 分支、提交历史与 diff 面板 | [安装与操作](packages/git-graph/README.md) |
 
-## 安装与更新
+Git Graph 是集合中的第一个 package；后续 layout 和配置按同样方式加入各自目录。
 
-基于 herdr-app **0.1.9** 默认布局；需要 git。组件在 Herdr 内运行，无需安装 Node 运行时依赖。
+## 目录
 
-```sh
-python3 scripts/install.py ~/.config/herdr-app
-herdr-app check ~/.config/herdr-app/mods/tabs-graph
-herdr-app check ~/.config/herdr-app/mods/git-graph
-herdr-app do layout.switch '{"name":"main-graph"}'
+```text
+packages/
+  git-graph/
+    layouts/                 布局文件
+    mods/                    面板与交互
+    scripts/install.py       此 package 的安装入口
+    tests/                   行为与安装测试
+    README.md                使用说明
+    THIRD-PARTY-NOTICES.md    上游来源及许可
+    upstream.json            上游版本
 ```
 
-自定义 app home 时，替换路径并为 herdr-app 命令设置相同的 HERDR_APP_HOME。
+各 package 按 Herdr 的文件布局组织，通过各自安装器写入所选 app home；官方内置文件、用户设置和快捷键由相应 package 明确声明是否改动。此仓库不自动安装所有 package。
 
-安装器只管理本包布局和 mods，保留官方 main、设置及快捷键。首次遇到同名文件会停止；更新时校验 `.herdr-app-mono-install.json`，保留被用户另行修改的文件并报错。修改本仓库后重新运行安装器同步。
+## 验证
 
-main 与 tabs 是官方默认文件的克隆；Herdr 升级后可从新默认文件重新合入 Graph 面板和入口。来源与许可见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
-
-## 验证与回退
+从仓库根运行当前 packages 的测试：
 
 ```sh
 npm test
-herdr-app check mods/tabs-graph
-herdr-app check mods/git-graph
 ```
 
-离线测试需要 Node.js 22+、Python 3 和 git。返回未修改的官方布局：
-
-```sh
-herdr-app do layout.switch '{"name":"main"}'
-```
+每个 package 的 README 说明其原生检查和安装方式。运行截图、性能追踪及临时日志保存在本地 `artifacts/`，不进入 Git 历史。
 
 ## 许可证
 
-本仓库原创集成代码以 [MIT](LICENSE) 发布。随附的上游组件分别遵循 Apache-2.0、MIT 和 ISC；对应版权与许可文本保留在 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)、`licenses/` 和图标目录中。
+本仓库原创代码采用 [MIT](LICENSE)。各 package 随附组件的版权与上游许可记录在其 `THIRD-PARTY-NOTICES.md` 和许可文件中。
